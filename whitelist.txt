@@ -47,6 +47,7 @@ changelog
 chfast
 classdict
 cli2
+cmd
 codeAddr
 codecopy
 codesize
@@ -70,13 +71,16 @@ delitem
 Dencun
 dev
 devnet
+dfx
 difficulty
 dir
 dirname
 discordapp
 docstring
 docstrings
+dotenv
 dup
+EEST
 eip
 eips
 EIPs
@@ -98,6 +102,7 @@ executables
 extcodecopy
 extcodehash
 extcodesize
+extractall
 filesystem
 fn
 fname
@@ -137,6 +142,7 @@ hyperledger
 ignoreRevsFile
 img
 incrementing
+infolist
 init
 initcode
 instantiation
@@ -282,6 +288,7 @@ u256
 ubuntu
 ukiyo
 uncomment
+unlink
 util
 utils
 v0
