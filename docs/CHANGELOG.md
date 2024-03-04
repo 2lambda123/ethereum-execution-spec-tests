@@ -22,6 +22,8 @@ Test fixtures for use by clients are available for each release on the [Github r
 - 🔀 Locally calculate state root for the genesis blocks in the blockchain tests instead of calling t8n ([#450](https://github.com/ethereum/execution-spec-tests/pull/450)).
 - 🐞 Fix bug that causes an exception during test collection because the fork parameter contains `None` ([#452](https://github.com/ethereum/execution-spec-tests/pull/452)).
 - ✨ The `_info` field in the test fixtures now contains a `hash` field, which is the hash of the test fixture, and a `hasher` script has been added which prints and performs calculations on top of the hashes of all fixtures (see `hasher -h`) ([#454](https://github.com/ethereum/execution-spec-tests/pull/454)).
+- ✨ Adds an `eest` entry point for common EEST commands and utilities, including initialization, clean up and repo resets ([#461](https://github.com/ethereum/execution-spec-tests/pull/461)).
+- 🔀 Removes `solc` as a dependency, utilizing `solc-select` to contain all `solc` versions within the python virtual environment ([#461](https://github.com/ethereum/execution-spec-tests/pull/461)).
 
 ### 🔧 EVM Tools
 
@@ -29,6 +31,11 @@ Test fixtures for use by clients are available for each release on the [Github r
 
 - 🐞 Fix deprecation warnings due to outdated config in recommended VS Code project settings ([#420](https://github.com/ethereum/execution-spec-tests/pull/420)).
 - 🐞 Fix typo in the selfdestruct revert tests module ([#421](https://github.com/ethereum/execution-spec-tests/pull/421)).
+
+### 💥 Breaking Changes
+
+- Windows users must now use Windows Subsystem for Linux (WSL) to work with EEST.
+- As `solc` is now deprecated as a dependency and self contained within the repo initialization, support will no longer be provided for users not using virtual environments.
 
 ## [v2.1.0](https://github.com/ethereum/execution-spec-tests/releases/tag/v2.1.0) - 2024-01-29: 🐍🏖️ Cancun
 

@@ -47,6 +47,7 @@ changelog
 chfast
 classdict
 cli2
+cmd
 codeAddr
 codecopy
 codesize
@@ -60,12 +61,14 @@ controlflow
 cp
 CPUs
 crypto
+ctx
 customizations
 Customizations
 danceratopz
 dao
 dataclasses
 datastructures
+datefmt
 delitem
 Dencun
 dev
@@ -77,6 +80,8 @@ discordapp
 docstring
 docstrings
 dup
+eest
+EEST
 eip
 eips
 EIPs
@@ -298,6 +303,7 @@ wds
 wei
 wikipedia
 wordlist
+WSL
 www
 xdist
 xF
@@ -317,6 +323,7 @@ autouse
 basedir
 callspec
 collectonly
+colorlog
 copyfile
 copytree
 dedent
