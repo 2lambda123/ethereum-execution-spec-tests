@@ -173,6 +173,7 @@ mainnet
 marioevz
 markdownlint
 md
+mem
 metaclass
 Misspelled words:
 mkdocs
@@ -212,6 +213,7 @@ prestateTracer
 programmatically
 px
 py
+pydantic
 pyspelling
 pytest
 Pytest
@@ -296,6 +298,7 @@ utils
 v0
 v1
 validator
+validators
 venv
 visualstudio
 vm
