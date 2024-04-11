@@ -30,7 +30,9 @@ from .common import (
     TestPrivateKey,
     TestPrivateKey2,
     Transaction,
+    Transactions,
     Withdrawal,
+    Withdrawals,
     add_kzg_version,
     ceiling_division,
     compute_create2_address,
@@ -52,7 +54,7 @@ from .spec import (
     StateTestFiller,
     TestInfo,
 )
-from .spec.blockchain.types import Block, Header
+from .spec.blockchain.types import Block, Blocks, Header
 from .vm import Macro, Opcode, OpcodeCallArg, Opcodes
 
 __all__ = (
@@ -67,6 +69,7 @@ __all__ = (
     "BlockchainTest",
     "BlockchainTestFiller",
     "BlockException",
+    "Blocks",
     "CalldataCase",
     "Case",
     "Code",
@@ -96,8 +99,10 @@ __all__ = (
     "TestPrivateKey",
     "TestPrivateKey2",
     "Transaction",
+    "Transactions",
     "TransactionException",
     "Withdrawal",
+    "Withdrawals",
     "Yul",
     "YulCompiler",
     "add_kzg_version",
