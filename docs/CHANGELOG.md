@@ -55,6 +55,8 @@ Test fixtures for use by clients are available for each release on the [Github r
 
 ### 🔧 EVM Tools
 
+- ✨ Use `execution-specs` evm tool daemon feature to fill tests, which provides a speed increase of around 57x ([#453](https://github.com/ethereum/execution-spec-tests/pull/453))
+
 ### 📋 Misc
 
 - 🐞 Fix deprecation warnings due to outdated config in recommended VS Code project settings ([#420](https://github.com/ethereum/execution-spec-tests/pull/420)).
