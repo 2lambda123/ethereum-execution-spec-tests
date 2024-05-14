@@ -56,7 +56,7 @@ class TestUseValueInTx:
             nonce=0,
             gas_price=ONE_GWEI,
             gas_limit=21000,
-            to=Address(0x100),
+            to=Address(0x1000),
             data="0x",
         )
 
@@ -123,13 +123,13 @@ def test_use_value_in_contract(blockchain_test: BlockchainTestFiller):
     """
     SEND_ONE_GWEI = Op.SSTORE(
         Op.NUMBER,
-        Op.CALL(Op.GAS, 0x200, 1000000000, 0, 0, 0, 0),
+        Op.CALL(Op.GAS, 0x2000, 1000000000, 0, 0, 0, 0),
     )
 
     pre = {
         TestAddress: Account(balance=1000000000000000000000, nonce=0),
-        Address(0x100): Account(balance=0, code=SEND_ONE_GWEI),
-        Address(0x200): Account(balance=1),
+        Address(0x1000): Account(balance=0, code=SEND_ONE_GWEI),
+        Address(0x2000): Account(balance=1),
     }
     tx = Transaction(
         # Transaction sent from the `TestAddress`, which has 0 balance at start
@@ -137,13 +137,13 @@ def test_use_value_in_contract(blockchain_test: BlockchainTestFiller):
         value=0,
         gas_price=10,
         gas_limit=100000,
-        to=Address(0x100),
+        to=Address(0x1000),
         data="0x",
     )
     withdrawal = Withdrawal(
         index=0,
         validator_index=0,
-        address=Address(0x100),
+        address=Address(0x1000),
         amount=1,
     )
 
@@ -157,13 +157,13 @@ def test_use_value_in_contract(blockchain_test: BlockchainTestFiller):
         ),
     ]
     post = {
-        Address(0x100): Account(
+        Address(0x1000): Account(
             storage={
                 0x1: 0x0,  # Call fails on the first attempt
                 0x2: 0x1,  # Succeeds on the second attempt
             }
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             balance=ONE_GWEI + 1,
         ),
     }
@@ -182,10 +182,10 @@ def test_balance_within_block(blockchain_test: BlockchainTestFiller):
     )
     pre = {
         TestAddress: Account(balance=1000000000000000000000, nonce=0),
-        Address(0x100): Account(
+        Address(0x1000): Account(
             code=SAVE_BALANCE_ON_BLOCK_NUMBER,
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             balance=ONE_GWEI,
         ),
     }
@@ -195,15 +195,15 @@ def test_balance_within_block(blockchain_test: BlockchainTestFiller):
                 Transaction(
                     nonce=0,
                     gas_limit=100000,
-                    to=Address(0x100),
-                    data=Hash(0x200),
+                    to=Address(0x1000),
+                    data=Hash(0x2000),
                 )
             ],
             withdrawals=[
                 Withdrawal(
                     index=0,
                     validator_index=0,
-                    address=Address(0x200),
+                    address=Address(0x2000),
                     amount=1,
                 )
             ],
@@ -213,15 +213,15 @@ def test_balance_within_block(blockchain_test: BlockchainTestFiller):
                 Transaction(
                     nonce=1,
                     gas_limit=100000,
-                    to=Address(0x100),
-                    data=Hash(0x200),
+                    to=Address(0x1000),
+                    data=Hash(0x2000),
                 )
             ]
         ),
     ]
 
     post = {
-        Address(0x100): Account(
+        Address(0x1000): Account(
             storage={
                 1: ONE_GWEI,
                 2: 2 * ONE_GWEI,
@@ -335,7 +335,7 @@ def test_many_withdrawals(blockchain_test: BlockchainTestFiller):
     withdrawals = []
     post = {}
     for i in range(N):
-        addr = Address(0x100 * i)
+        addr = Address(0x1000 * i)
         amount = i * 1
         pre[addr] = Account(
             code=Op.SSTORE(Op.NUMBER, 1),
@@ -366,17 +366,17 @@ def test_many_withdrawals(blockchain_test: BlockchainTestFiller):
 def test_self_destructing_account(blockchain_test: BlockchainTestFiller, fork: Fork):
     """
     Test withdrawals can be done to self-destructed accounts.
-    Account `0x100` self-destructs and sends all its balance to `0x200`.
-    Then, a withdrawal is received at `0x100` with 99 wei.
+    Account `0x1000` self-destructs and sends all its balance to `0x2000`.
+    Then, a withdrawal is received at `0x1000` with 99 wei.
     """
     self_destruct_code = Op.SELFDESTRUCT(Op.CALLDATALOAD(0))
     pre = {
         TestAddress: Account(balance=1000000000000000000000, nonce=0),
-        Address(0x100): Account(
+        Address(0x1000): Account(
             code=self_destruct_code,
             balance=(100 * ONE_GWEI),
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             balance=1,
         ),
     }
@@ -387,14 +387,14 @@ def test_self_destructing_account(blockchain_test: BlockchainTestFiller, fork: F
         nonce=0,
         gas_price=10,
         gas_limit=100000,
-        to=Address(0x100),
-        data=Hash(0x200),
+        to=Address(0x1000),
+        data=Hash(0x2000),
     )
 
     withdrawal = Withdrawal(
         index=0,
         validator_index=0,
-        address=Address(0x100),
+        address=Address(0x1000),
         amount=(99),
     )
 
@@ -404,11 +404,11 @@ def test_self_destructing_account(blockchain_test: BlockchainTestFiller, fork: F
     )
 
     post = {
-        Address(0x100): Account(
+        Address(0x1000): Account(
             code=self_destruct_code if fork >= Cancun else b"",
             balance=(99 * ONE_GWEI),
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             code=b"",
             balance=(100 * ONE_GWEI) + 1,
         ),
@@ -482,16 +482,16 @@ def test_no_evm_execution(blockchain_test: BlockchainTestFiller):
     """
     pre = {
         TestAddress: Account(balance=1000000000000000000000, nonce=0),
-        Address(0x100): Account(
+        Address(0x1000): Account(
             code=Op.SSTORE(Op.NUMBER, 1),
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             code=Op.SSTORE(Op.NUMBER, 1),
         ),
-        Address(0x300): Account(
+        Address(0x3000): Account(
             code=Op.SSTORE(Op.NUMBER, 1),
         ),
-        Address(0x400): Account(
+        Address(0x4000): Account(
             code=Op.SSTORE(Op.NUMBER, 1),
         ),
     }
@@ -501,25 +501,25 @@ def test_no_evm_execution(blockchain_test: BlockchainTestFiller):
                 Transaction(
                     nonce=0,
                     gas_limit=100000,
-                    to=Address(0x300),
+                    to=Address(0x3000),
                 ),
                 Transaction(
                     nonce=1,
                     gas_limit=100000,
-                    to=Address(0x400),
+                    to=Address(0x4000),
                 ),
             ],
             withdrawals=[
                 Withdrawal(
                     index=0,
                     validator_index=0,
-                    address=Address(0x100),
+                    address=Address(0x1000),
                     amount=1,
                 ),
                 Withdrawal(
                     index=1,
                     validator_index=1,
-                    address=Address(0x200),
+                    address=Address(0x2000),
                     amount=1,
                 ),
             ],
@@ -529,25 +529,25 @@ def test_no_evm_execution(blockchain_test: BlockchainTestFiller):
                 Transaction(
                     nonce=2,
                     gas_limit=100000,
-                    to=Address(0x100),
+                    to=Address(0x1000),
                 ),
                 Transaction(
                     nonce=3,
                     gas_limit=100000,
-                    to=Address(0x200),
+                    to=Address(0x2000),
                 ),
             ],
             withdrawals=[
                 Withdrawal(
                     index=0,
                     validator_index=0,
-                    address=Address(0x300),
+                    address=Address(0x3000),
                     amount=1,
                 ),
                 Withdrawal(
                     index=1,
                     validator_index=1,
-                    address=Address(0x400),
+                    address=Address(0x4000),
                     amount=1,
                 ),
             ],
@@ -555,10 +555,10 @@ def test_no_evm_execution(blockchain_test: BlockchainTestFiller):
     ]
 
     post = {
-        Address(0x100): Account(storage={2: 1}),
-        Address(0x200): Account(storage={2: 1}),
-        Address(0x300): Account(storage={1: 1}),
-        Address(0x400): Account(storage={1: 1}),
+        Address(0x1000): Account(storage={2: 1}),
+        Address(0x2000): Account(storage={2: 1}),
+        Address(0x3000): Account(storage={1: 1}),
+        Address(0x4000): Account(storage={1: 1}),
     }
 
     blockchain_test(pre=pre, post=post, blocks=blocks)
@@ -595,7 +595,7 @@ def test_zero_amount(
     """
     pre = {
         TestAddress: Account(balance=1000000000000000000000, nonce=0),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             code="0x00",
             balance=0,
         ),
@@ -606,36 +606,36 @@ def test_zero_amount(
         Withdrawal(
             index=0,
             validator_index=0,
-            address=Address(0x100),
+            address=Address(0x1000),
             amount=0,
         ),
         # No value, touched account
         Withdrawal(
             index=0,
             validator_index=0,
-            address=Address(0x200),
+            address=Address(0x2000),
             amount=0,
         ),
         # Withdrawal with value
         Withdrawal(
             index=1,
             validator_index=0,
-            address=Address(0x300),
+            address=Address(0x3000),
             amount=1,
         ),
         # Withdrawal with maximum amount
         Withdrawal(
             index=2,
             validator_index=0,
-            address=Address(0x400),
+            address=Address(0x4000),
             amount=2**64 - 1,
         ),
     ]
     all_post = {
-        Address(0x100): Account.NONEXISTENT,
-        Address(0x200): Account(code="0x00", balance=0),
-        Address(0x300): Account(balance=ONE_GWEI),
-        Address(0x400): Account(balance=(2**64 - 1) * ONE_GWEI),
+        Address(0x1000): Account.NONEXISTENT,
+        Address(0x2000): Account(code="0x00", balance=0),
+        Address(0x3000): Account(balance=ONE_GWEI),
+        Address(0x4000): Account(balance=(2**64 - 1) * ONE_GWEI),
     }
 
     withdrawals: List[Withdrawal] = []
@@ -645,7 +645,7 @@ def test_zero_amount(
         post = {
             account: all_post[account]
             for account in post
-            if account in [Address(0x100), Address(0x200)]
+            if account in [Address(0x1000), Address(0x2000)]
         }
     elif test_case == ZeroAmountTestCases.THREE_ONE_WITH_VALUE:
         withdrawals = all_withdrawals[0:3]
@@ -654,9 +654,9 @@ def test_zero_amount(
             for account in post
             if account
             in [
-                Address(0x100),
-                Address(0x200),
-                Address(0x300),
+                Address(0x1000),
+                Address(0x2000),
+                Address(0x3000),
             ]
         }
     elif test_case == ZeroAmountTestCases.FOUR_ONE_WITH_MAX:
@@ -707,7 +707,7 @@ def test_large_amount(blockchain_test: BlockchainTestFiller):
     post = {}
 
     for i, amount in enumerate(amounts):
-        addr = Address(0x100 * (i + 1))
+        addr = Address(0x1000 * (i + 1))
         withdrawals.append(
             Withdrawal(
                 index=i,
@@ -729,7 +729,10 @@ def test_large_amount(blockchain_test: BlockchainTestFiller):
 @pytest.mark.parametrize("amount", [0, 1])
 @pytest.mark.with_all_precompiles
 def test_withdrawing_to_precompiles(
-    blockchain_test: BlockchainTestFiller, precompile: int, amount: int, t8n: TransitionTool
+    blockchain_test: BlockchainTestFiller,
+    precompile: int,
+    amount: int,
+    t8n: TransitionTool,
 ):
     """
     Test withdrawing to all precompiles for a given fork.

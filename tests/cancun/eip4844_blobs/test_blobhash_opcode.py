@@ -118,7 +118,7 @@ def test_blobhash_gas_cost(
         for i in blobhash_index_values
     ]
     for i, gas_code in enumerate(gas_measures_code):
-        address = Address(0x100 + i * 0x100)
+        address = Address(0x1000 + i * 0x1000)
         pre[address] = Account(code=gas_code)
         blocks.append(
             Block(
@@ -177,7 +177,7 @@ def test_blobhash_scenarios(
     b_hashes_list = BlobhashScenario.create_blob_hashes_list(length=TOTAL_BLOCKS)
     blobhash_calls = BlobhashScenario.generate_blobhash_bytecode(scenario)
     for i in range(TOTAL_BLOCKS):
-        address = Address(0x100 + i * 0x100)
+        address = Address(0x1000 + i * 0x1000)
         pre[address] = Account(code=blobhash_calls)
         blocks.append(
             Block(
@@ -234,7 +234,7 @@ def test_blobhash_invalid_blob_index(
     TOTAL_BLOCKS = 5
     blobhash_calls = BlobhashScenario.generate_blobhash_bytecode(scenario)
     for i in range(TOTAL_BLOCKS):
-        address = Address(0x100 + i * 0x100)
+        address = Address(0x1000 + i * 0x1000)
         pre[address] = Account(code=blobhash_calls)
         blob_per_block = (i % SpecHelpers.max_blobs_per_block()) + 1
         blobs = [random_blob_hashes[blob] for blob in range(blob_per_block)]
@@ -287,26 +287,26 @@ def test_blobhash_multiple_txs_in_block(
         **pre,
         **{
             Address(address): Account(code=blobhash_bytecode)
-            for address in range(0x100, 0x500, 0x100)
+            for address in range(0x1000, 0x5000, 0x1000)
         },
     }
     blocks = [
         Block(
             txs=[
-                blob_tx(address=Address(0x100), type=3, nonce=0),
-                blob_tx(address=Address(0x100), type=2, nonce=1),
+                blob_tx(address=Address(0x1000), type=3, nonce=0),
+                blob_tx(address=Address(0x1000), type=2, nonce=1),
             ]
         ),
         Block(
             txs=[
-                blob_tx(address=Address(0x200), type=2, nonce=2),
-                blob_tx(address=Address(0x200), type=3, nonce=3),
+                blob_tx(address=Address(0x2000), type=2, nonce=2),
+                blob_tx(address=Address(0x2000), type=3, nonce=3),
             ]
         ),
         Block(
             txs=[
-                blob_tx(address=Address(0x300), type=2, nonce=4),
-                blob_tx(address=Address(0x400), type=3, nonce=5),
+                blob_tx(address=Address(0x3000), type=2, nonce=4),
+                blob_tx(address=Address(0x4000), type=3, nonce=5),
             ],
         ),
     ]
@@ -314,9 +314,9 @@ def test_blobhash_multiple_txs_in_block(
         Address(address): Account(
             storage={i: random_blob_hashes[i] for i in range(SpecHelpers.max_blobs_per_block())}
         )
-        if address in (0x200, 0x400)
+        if address in (0x2000, 0x4000)
         else Account(storage={i: 0 for i in range(SpecHelpers.max_blobs_per_block())})
-        for address in range(0x100, 0x500, 0x100)
+        for address in range(0x1000, 0x5000, 0x1000)
     }
     blockchain_test(
         pre=pre,

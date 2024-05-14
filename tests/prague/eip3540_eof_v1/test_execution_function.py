@@ -365,11 +365,11 @@ def test_eof_functions_contract_call_succeed(
             balance=1000000000000000000000,
             nonce=1,
         ),
-        Address(0x100): Account(
+        Address(0x1000): Account(
             code=caller_contract,
             nonce=1,
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             code=container,
             nonce=1,
         ),
@@ -377,14 +377,14 @@ def test_eof_functions_contract_call_succeed(
 
     tx = Transaction(
         nonce=1,
-        to=Address(0x100),
+        to=Address(0x1000),
         gas_limit=50000000,
         gas_price=10,
         protected=False,
         data="",
     )
 
-    post = {Address(0x100): Account(storage={0: 1})}
+    post = {Address(0x1000): Account(storage={0: 1})}
 
     state_test(
         env=env,
@@ -411,11 +411,11 @@ def test_eof_functions_contract_call_fail(
             balance=1000000000000000000000,
             nonce=1,
         ),
-        Address(0x100): Account(
+        Address(0x1000): Account(
             code=caller_contract,
             nonce=1,
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             code=container,
             nonce=1,
         ),
@@ -423,14 +423,14 @@ def test_eof_functions_contract_call_fail(
 
     tx = Transaction(
         nonce=1,
-        to=Address(0x100),
+        to=Address(0x1000),
         gas_limit=50000000,
         gas_price=10,
         protected=False,
         data="",
     )
 
-    post = {Address(0x100): Account(storage={0: 1})}
+    post = {Address(0x1000): Account(storage={0: 1})}
 
     state_test(
         env=env,
@@ -456,24 +456,24 @@ def test_eof_functions_contract_call_within_deep_nested(
             balance=1000000000000000000000,
             nonce=1,
         ),
-        Address(0x100): Account(
+        Address(0x1000): Account(
             code=contract_call_within_deep_nested_callf,
         ),
-        Address(0x200): Account(
+        Address(0x2000): Account(
             code=Op.SSTORE(0, 1) + Op.STOP(),
         ),
     }
     tx = Transaction(
         nonce=1,
-        to=Address(0x100),
+        to=Address(0x1000),
         gas_limit=50000000,
         gas_price=10,
         protected=False,
         data="",
     )
     post = {
-        Address(0x100): Account(storage={i: 1 for i in range(MAX_CODE_SECTIONS)}),
-        Address(0x200): Account(
+        Address(0x1000): Account(storage={i: 1 for i in range(MAX_CODE_SECTIONS)}),
+        Address(0x2000): Account(
             storage={
                 0: 1,
             }
