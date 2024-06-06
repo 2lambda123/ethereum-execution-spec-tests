@@ -583,6 +583,10 @@ class EOFException(ExceptionBase):
     """
     EOF container missing code section.
     """
+    MISSING_DATA_SECTION = auto()
+    """
+    EOF container missing data section
+    """
     INVALID_CODE_SECTION = auto()
     """
     EOF container code section bytes are incorrect.
@@ -626,6 +630,10 @@ class EOFException(ExceptionBase):
     INVALID_FIRST_SECTION_TYPE = auto()
     """
     EOF container header does not have types section first.
+    """
+    INVALID_CODE_SECTION_INDEX = auto()
+    """
+    EOF code tried to call to the section that does not exist
     """
     INCOMPLETE_SECTION_NUMBER = auto()
     """
@@ -675,6 +683,10 @@ class EOFException(ExceptionBase):
     INVALID_MAX_STACK_HEIGHT = auto()
     """
     EOF container section's specified max stack height does not match the actual stack height.
+    """
+    TRUNCATED_INSTRUCTION = auto()
+    """
+    EOF code has instruction that is missing it's stack bytes (like push1 is just 60)
     """
     INVALID_DATALOADN_INDEX = auto()
     """

@@ -6,7 +6,14 @@ import pytest
 
 from ethereum_test_tools import EOFTestFiller, Opcode
 from ethereum_test_tools import Opcodes as Op
-from ethereum_test_tools.eof.v1 import Bytes, Container, EOFException, Section
+from ethereum_test_tools.eof.v1 import (
+    AutoSection,
+    Bytes,
+    Container,
+    EOFException,
+    Section,
+    SectionKind,
+)
 from ethereum_test_tools.eof.v1.constants import NON_RETURNING_SECTION
 
 from .. import EOF_FORK_NAME
@@ -312,7 +319,7 @@ pytestmark = pytest.mark.valid_from(EOF_FORK_NAME)
                 name="EOF1I0020",
                 sections=[
                     Section.Code(
-                        code=Op.PUSH1(1) + Op.RJUMPI[1] + Op.ADDRESS + Op.NOOP + Op.STOP,
+                        code=Op.RJUMPI[1](1) + Op.ADDRESS + Op.NOOP + Op.STOP,
                         code_inputs=0,
                         code_outputs=NON_RETURNING_SECTION,
                         max_stack_height=1,
@@ -367,12 +374,12 @@ pytestmark = pytest.mark.valid_from(EOF_FORK_NAME)
             id="push1_0_0_0_rjump_3_2_m6_fails",
         ),
         pytest.param(
-            # Check that that code that uses removed opcodes fails
+            # Check that that code that uses removed opcodes fails (Data 18)
             Container(
                 name="EOF1I0015",
                 sections=[
                     Section.Code(
-                        code=Op.PUSH1(3) + Op.JUMP + Op.JUMPDEST + Op.STOP,
+                        code=Op.JUMP(3) + Op.JUMPDEST + Op.STOP,
                         code_inputs=0,
                         code_outputs=NON_RETURNING_SECTION,
                         max_stack_height=1,
@@ -383,6 +390,874 @@ pytestmark = pytest.mark.valid_from(EOF_FORK_NAME)
             "ef0001010004020001000504000100008000016003565B00ef",
             EOFException.UNDEFINED_INSTRUCTION,
             id="jump_jumpdest_fails",
+        ),
+        pytest.param(
+            # Check that that code that uses removed opcodes fails (Data 19)
+            Container(
+                name="EOF1I0015",
+                sections=[
+                    Section.Code(
+                        code=Op.JUMPI(3, 1) + Op.JUMPDEST + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0xef"),
+                ],
+            ),
+            "ef00010100040200010007040001000080000160016003575B00ef",
+            EOFException.UNDEFINED_INSTRUCTION,
+            id="jumpi_jumpdest_fails",
+        ),
+        pytest.param(
+            # Check that that code that uses removed opcodes fails (Data 20)
+            Container(
+                name="EOF1I0015",
+                sections=[
+                    Section.Code(
+                        code=Op.SELFDESTRUCT(1) + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0xef"),
+                ],
+            ),
+            "ef0001010004020001000404000100008000016001ff00ef",
+            EOFException.UNDEFINED_INSTRUCTION,
+            id="selfdestruct_fails",
+        ),
+        pytest.param(
+            # Check that that code that uses removed opcodes fails (Data 21)
+            Container(
+                name="EOF1I0015",
+                sections=[
+                    Section.Code(
+                        code=Op.SELFDESTRUCT(1) + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=7,
+                        skip_body_listing=True,
+                    ),
+                    Section.Data("", custom_size=1),
+                ],
+            ),
+            "ef000101000402000100040400010000800007",
+            EOFException.INVALID_SECTION_BODIES_SIZE,
+            id="bodies_bytes_missing",
+        ),
+        pytest.param(
+            # Check that that code that uses removed opcodes fails (Data 22)
+            Container(
+                name="EOF1I0015",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLCODE(7, 6, 5, 4, 3, 2, 1) + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                ],
+            ),
+            "ef0001010004020001001004000100008000016001600260036004600560066007f200ef",
+            EOFException.UNDEFINED_INSTRUCTION,
+            id="callcode_fails",
+        ),
+        pytest.param(
+            # Check that code that uses new relative jumps to outside the section fails
+            Container(
+                name="EOF1I0016",
+                sections=[
+                    Section.Code(
+                        code=Op.JUMP(3) + Op.JUMPDEST + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                ],
+            ),
+            "ef0001010004020001000504000100008000016003565b00ef",
+            EOFException.UNDEFINED_INSTRUCTION,
+            id="jump_outside_section_fails",
+        ),
+        pytest.param(
+            # Check that valid EOF1 with two code sections deploys
+            # Check that return values are allowed on code sections that aren't zero (Data 24)
+            Container(
+                name="EOF1V0002+EOF1V0006",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.CALLF[1] + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.POP + Op.ADDRESS + Op.RETF,
+                        code_inputs=1,
+                        code_outputs=1,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF00010100080200020006000304000400008000010101000130e3000150005030e40bad60a7",
+            None,
+            id="return_allowed_on_nonzero_sections",
+        ),
+        pytest.param(
+            # Check return values on code sections affect maxStackHeight of the caller (Data 25)
+            Container(
+                name="EOF1V0012",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLF[1] + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=1,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef000101000802000200040002040004000080000100010001E300010030E40bad60A7",
+            None,
+            id="return_values_from_section_affect_stack_height_of_caller",
+        ),
+        pytest.param(
+            # Check sections that end with a non-terminator opcode fail (Data 26)
+            Container(
+                name="EOF1I0024",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLF[1],
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS,
+                        code_inputs=0,
+                        code_outputs=1,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef000101000802000200030001040004000080000100010001E30001300bad60A7",
+            EOFException.MISSING_STOP_OPCODE,
+            id="non_terminating_opcode_in_section_code_fails",
+        ),
+        pytest.param(
+            # Check sections that end with a non-terminator opcode fail (Data 26 b)
+            Container(
+                name="EOF1I0024",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLF[1] + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS,
+                        code_inputs=0,
+                        code_outputs=1,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef000101000802000200040001040004000080000100010001E3000100300bad60A7",
+            EOFException.INVALID_NON_RETURNING_FLAG,
+            id="non_terminating_opcode_in_section_code_fails",
+        ),
+        pytest.param(
+            # Check stack underflow caused by a function call (Data 27)
+            Container(
+                name="EOF1I0022",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLF[1] + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.POP + Op.RETF,
+                        code_inputs=1,
+                        code_outputs=0,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef000101000802000200040002040004000080000101000001E300010050E40bad60A7",
+            EOFException.STACK_UNDERFLOW,
+            id="stack_underflow_by_function_call",
+        ),
+        pytest.param(
+            # Check data stack height of 1023 is valid (Data 28)
+            Container(
+                name="EOF1V0015",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLF[2] * 10 + Op.CALLF[1] * 2 + Op.ADDRESS * 3 + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1023,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS * 10 + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=10,
+                        max_stack_height=10,
+                    ),
+                    Section.Code(
+                        code=Op.CALLF[1] * 10 + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=100,
+                        max_stack_height=100,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef000101000C0200030028000B001F04000400008003ff000a000a00640064E30002E30002E30002"
+            "E30002E30002E30002E30002E30002E30002E30002E30001E3000130303000303030303030303030"
+            "30E4E30001E30001E30001E30001E30001E30001E30001E30001E30001E30001E40bad60A7",
+            None,
+            id="stack_height_1023_valid",
+        ),
+        pytest.param(
+            # Check data stack height of 1024 is invalid (Data 29)
+            Container(
+                name="EOF1I0025",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLF[2] * 10 + Op.CALLF[1] * 2 + Op.ADDRESS * 4 + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1024,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS * 10 + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=10,
+                        max_stack_height=10,
+                    ),
+                    Section.Code(
+                        code=Op.CALLF[1] * 10 + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=100,
+                        max_stack_height=100,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef000101000C0200030029000B001F0400040000800400000a000a00640064E30002E30002E30002"
+            "E30002E30002E30002E30002E30002E30002E30002E30001E300013030303000303030303030303030"
+            "30E4E30001E30001E30001E30001E30001E30001E30001E30001E30001E30001E40bad60A7",
+            EOFException.MAX_STACK_HEIGHT_ABOVE_LIMIT,
+            id="stack_height_1024_invalid",
+        ),
+        pytest.param(
+            # Check data stack height of 1024 is invalid (Data 29 b)
+            Container(
+                name="EOF1I0025",
+                sections=[
+                    Section.Code(
+                        code=Op.CALLF[2] * 10 + Op.CALLF[1] * 2 + Op.ADDRESS * 4 + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1023,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS * 10 + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=10,
+                        max_stack_height=10,
+                    ),
+                    Section.Code(
+                        code=Op.CALLF[1] * 10 + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=100,
+                        max_stack_height=100,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef000101000C0200030029000B001F04000400008003ff000a000a00640064E30002E30002E30002"
+            "E30002E30002E30002E30002E30002E30002E30002E30001E300013030303000303030303030303030"
+            "30E4E30001E30001E30001E30001E30001E30001E30001E30001E30001E30001E40bad60A7",
+            EOFException.INVALID_MAX_STACK_HEIGHT,
+            id="stack_height_1024_invalid",
+        ),
+        pytest.param(
+            # Check that valid EOF1 with four code sections deploys (Data 30)
+            Container(
+                name="EOF1V0003",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.CALLF[1] + Op.CALLF[3] + Op.CALLF[2] + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.POP + Op.ADDRESS + Op.RETF,
+                        code_inputs=1,
+                        code_outputs=1,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=0,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.POP + Op.ADDRESS + Op.RETF,
+                        code_inputs=1,
+                        code_outputs=1,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF0001010010020004000b000300030003040004000080000101010001000000010101000130e30001"
+            "e30003e30002005030e43050e45030e40bad60a7",
+            None,
+            id="four_code_sections_valid",
+        ),
+        pytest.param(
+            # Check that EOF1 with the right maxStackDepth deploys (Data 31)
+            Container(
+                name="EOF1V0005",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.POP
+                        + Op.PUSH0
+                        + Op.CALLDATALOAD
+                        + Op.RJUMPV[0, 3, 6]
+                        + Op.JUMPF[1]
+                        + Op.JUMPF[2]
+                        + Op.JUMPF[3],
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS + Op.ADDRESS + Op.POP + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=2,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.ADDRESS
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.POP
+                        + Op.POP
+                        + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=3,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.POP
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF00010100100200040015000500070007040004000080000100800002008000030080000130505f35"
+            "e202000000030006e50001e50002e50003303050500030303050505000305030503050000bad60a7",
+            None,
+            id="max_stack_depth_correct",
+        ),
+        pytest.param(
+            # Check that that function calls to code sections that exist are allowed (Data 32)
+            Container(
+                name="EOF1V0007",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.POP
+                        + Op.PUSH0
+                        + Op.CALLDATALOAD
+                        + Op.RJUMPV[0, 3]
+                        + Op.JUMPF[1]
+                        + Op.JUMPF[3],
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.JUMPF[2],
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=0,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.ADDRESS
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.POP
+                        + Op.POP
+                        + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=3,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.POP
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF00010100100200040010000300070007040004000080000100800000008000030080000130505f35"
+            "e20100000003e50001e50003e5000230303050505000305030503050000bad60a7",
+            None,
+            id="function_call_to_code_sections_valid",
+        ),
+        pytest.param(
+            # Check that function calls to code sections that don't exist fail (Data 33)
+            Container(
+                name="EOF1I0011",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.POP
+                        + Op.PUSH0
+                        + Op.CALLDATALOAD
+                        + Op.RJUMPV[0, 3, 6]
+                        + Op.JUMPF[1]
+                        + Op.JUMPF[2]
+                        + Op.JUMPF[3],
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.JUMPF[15],
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=0,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.ADDRESS
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.POP
+                        + Op.POP
+                        + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=3,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS
+                        + Op.POP
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.ADDRESS
+                        + Op.POP
+                        + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF00010100100200040015000300070007040004000080000100800000008000030080000130505f35"
+            "e202000000030006e50001e50002e50003e5000f30303050505000305030503050000bad60a7",
+            EOFException.INVALID_CODE_SECTION_INDEX,
+            id="function_call_to_nonexistent_sections_fail",
+        ),
+        pytest.param(
+            # Check that code sections that cause stack underflow fail (Data 34)
+            Container(
+                name="EOF1I0012",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.JUMPF[1] + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.POP + Op.POP + Op.STOP,
+                        code_inputs=2,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=2,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF0001010008020002000600030400040000800001028000023050e50001005050000bad60a7",
+            EOFException.STACK_UNDERFLOW,
+            id="section_cause_stack_underflow",
+        ),
+        pytest.param(
+            # Check that we can't return more values than we declare (Data 35)
+            Container(
+                name="EOF1I0013",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.CALLF[1] + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS + Op.ADDRESS + Op.RETF,
+                        code_inputs=0,
+                        code_outputs=1,
+                        max_stack_height=2,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF0001010008020002000600030400040000800001000100023050e30001003030e40bad60a7",
+            EOFException.STACK_HIGHER_THAN_OUTPUTS,
+            id="return_more_than_declared",
+        ),
+        pytest.param(
+            # Check that code that looks deeper in the stack than the parameters fails (Data 36)
+            Container(
+                name="EOF1I0014",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.CALLF[1] + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Code(
+                        code=Op.ADDRESS + Op.SWAP2 + Op.RETF,
+                        code_inputs=1,
+                        code_outputs=1,
+                        max_stack_height=2,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF0001010008020002000600030400040000800001010100023050e30001003091e40bad60a7",
+            EOFException.STACK_UNDERFLOW,
+            id="stack_deeper_than_parameters",
+        ),
+        pytest.param(
+            # Check that return values are not allowed on section 0 (Data 37)
+            Container(
+                name="EOF1I0010",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.INVALID,
+                        code_inputs=0,
+                        code_outputs=1,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef0001010004020001000304000400000100013050FE0bad60A7",
+            EOFException.INVALID_FIRST_SECTION_TYPE,
+            id="section0_returns_values",
+        ),
+        pytest.param(
+            # Check that parameters are allowed on code sections that aren't zero (Data 38)
+            # parameters are part of the max stack height
+            Container(
+                name="EOF1V0009_EOF1V0010",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.PUSH0 + Op.JUMPF[1],
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=2,
+                    ),
+                    Section.Code(
+                        code=Op.POP + Op.POP + Op.STOP,
+                        code_inputs=2,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=2,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "EF000101000802000200050003040004000080000202800002305fe500015050000bad60a7",
+            None,
+            id="non_zero_parameters_stack",
+        ),
+        pytest.param(
+            # Check that parameters are not allowed on section 0 (Data 39)
+            Container(
+                name="EOF1I0017",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.INVALID,
+                        code_inputs=1,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef0001010004020001000304000400018000013050FE0bad60A7",
+            EOFException.INVALID_FIRST_SECTION_TYPE,
+            id="non_zero_parameters_first_section",
+        ),
+        pytest.param(
+            # Check that EOF1 with the wrong maxStackDepth fails (Data 40)
+            Container(
+                name="EOF1I0009",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=3,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef0001010004020001000304000400008000033050000bad60A7",
+            EOFException.INVALID_MAX_STACK_HEIGHT,
+            id="section0_stack_height_too_high",
+        ),
+        pytest.param(
+            # Check that EOF1 with the wrong maxStackDepth fails (Data 41)
+            Container(
+                name="EOF1I0009",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=5,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            # Corrected headers bytes here, as the code has 5 bytes not 1
+            "ef00010100040200010005040004000080000530503050000bad60A7",
+            EOFException.INVALID_MAX_STACK_HEIGHT,
+            id="section0_stack_height_too_high_2",
+        ),
+        pytest.param(
+            # Check that EOF1 with the wrong maxStackDepth fails (Data 41 original)
+            Container(
+                name="EOF1I0009",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=5,
+                        custom_size=1,  # section bytes size will be not 5, but 1
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef00010100040200010001040004000080000530503050000bad60A7",
+            EOFException.INVALID_SECTION_BODIES_SIZE,
+            id="section0_stack_height_too_high_2a",
+        ),
+        pytest.param(
+            # Check that EOF1 with a malformed code section fails (Data 42)
+            Container(
+                name="EOF1I0007",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.PUSH3,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("0bad60a7"),
+                ],
+            ),
+            "ef0001010004020001000304000400008000013050620bad60A7",
+            EOFException.TRUNCATED_INSTRUCTION,
+            id="instruction_miss_stack_values",
+        ),
+        pytest.param(
+            # Check that EOF1 with a bad end of sections number fails (Data 43)
+            Container(
+                name="EOF1I0007",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                ],
+                header_terminator=bytes.fromhex("ff"),
+            ),
+            "ef00010100040200010003040001FF00800001305000ef",
+            EOFException.MISSING_TERMINATOR,
+            id="header_terminator_byte_is_wrong",
+        ),
+        pytest.param(
+            # Check that EOF1 with a bad magic number fails (Data 44)
+            Container(
+                name="EOF1I0001",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                ],
+                magic=Bytes.fromhex("ef02"),
+            ),
+            "ef020101000402000100030400010000800001305000ef",
+            EOFException.INVALID_MAGIC,
+            id="bad_magic",
+        ),
+        pytest.param(
+            # Check that EOF1 with a bad version number fails (version 0) (Data 45)
+            Container(
+                name="EOF1I0002",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                ],
+                version=Bytes.fromhex("00"),
+            ),
+            "ef000001000402000100030400010000800001305000ef",
+            EOFException.INVALID_VERSION,
+            id="bad_version",
+        ),
+        pytest.param(
+            # Check that EOF1 with a bad version number fails (version 2) (Data 45 a)
+            Container(
+                name="EOF1I0002",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                ],
+                version=Bytes.fromhex("02"),
+            ),
+            "ef000201000402000100030400010000800001305000ef",
+            EOFException.INVALID_VERSION,
+            id="bad_version",
+        ),
+        pytest.param(
+            # Check that EOF1 with a bad section order fails
+            Container(
+                name="EOF1I0003",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section(
+                        kind=SectionKind.TYPE,
+                        data=Bytes.fromhex("00800001"),
+                        custom_size=4,
+                    ),
+                    Section.Data("ef"),
+                ],
+                auto_sort_sections=AutoSection.ONLY_BODY,
+            ),
+            "ef000102000100030100040400010000800001305000ef",
+            # TODO rename this to MISSING TYPE SECTION HEADER
+            # Or better if the parsers will detect that it is present
+            # but understand that it is in a wrong position and report that
+            EOFException.MISSING_TYPE_HEADER,
+            id="bad_type_section_order",
+        ),
+        pytest.param(
+            # Check that EOF1 with a bad section order fails
+            Container(
+                name="EOF1I0003",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                    Section(
+                        kind=SectionKind.TYPE,
+                        data=Bytes.fromhex("00800001"),
+                        custom_size=4,
+                    ),
+                ],
+                auto_sort_sections=AutoSection.ONLY_BODY,
+            ),
+            "ef000102000100030400010100040000800001305000ef",
+            # TODO rename this to MISSING TYPE SECTION HEADER
+            # Or better if the parsers will detect that it is present
+            # but understand that it is in a wrong position and report that
+            EOFException.MISSING_TYPE_HEADER,
+            id="bad_type_section_order_2",
+        ),
+        pytest.param(
+            # Check that EOF1 with missing types section in the header fails
+            Container(
+                name="EOF1I0004",
+                sections=[
+                    Section.Code(
+                        code=Op.ADDRESS + Op.POP + Op.STOP,
+                        code_inputs=0,
+                        code_outputs=NON_RETURNING_SECTION,
+                        max_stack_height=1,
+                    ),
+                    Section.Data("ef"),
+                ],
+                auto_type_section=AutoSection.ONLY_BODY,
+            ),
+            "ef000102000100030400010000800001305000ef",
+            EOFException.MISSING_TYPE_HEADER,
+            id="bad_type_section_order_3",
         ),
     ],
 )

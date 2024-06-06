@@ -57,17 +57,22 @@ class EvmoneExceptionMapper:
         ExceptionMessage(EOFException.INVALID_RJUMP_DESTINATION, "err: invalid_rjump_destination"),
         ExceptionMessage(EOFException.UNREACHABLE_CODE_SECTIONS, "err: unreachable_code_sections"),
         ExceptionMessage(EOFException.STACK_UNDERFLOW, "err: stack_underflow"),
+        ExceptionMessage(EOFException.INVALID_MAX_STACK_HEIGHT, "err: invalid_max_stack_height"),
         ExceptionMessage(
             EOFException.MAX_STACK_HEIGHT_ABOVE_LIMIT, "err: max_stack_height_above_limit"
         ),
         ExceptionMessage(
-            EOFException.STACK_HIGHER_THAN_OUTPUTS, "err: stack_higher_than_outputs_required"
+            EOFException.INVALID_CODE_SECTION_INDEX, "err: invalid_code_section_index"
         ),
         ExceptionMessage(
             EOFException.JUMPF_DESTINATION_INCOMPATIBLE_OUTPUTS,
             "err: jumpf_destination_incompatible_outputs",
         ),
-        ExceptionMessage(EOFException.INVALID_MAX_STACK_HEIGHT, "err: invalid_max_stack_height"),
+        ExceptionMessage(
+            EOFException.STACK_HIGHER_THAN_OUTPUTS, "err: stack_higher_than_outputs_required"
+        ),
+        ExceptionMessage(EOFException.TRUNCATED_INSTRUCTION, "err: truncated_instruction"),
+        ExceptionMessage(EOFException.MISSING_DATA_SECTION, "err: data_section_missing"),
         ExceptionMessage(EOFException.INVALID_DATALOADN_INDEX, "err: invalid_dataloadn_index"),
         ExceptionMessage(EOFException.TRUNCATED_INSTRUCTION, "err: truncated_instruction"),
     )
