@@ -5,7 +5,7 @@ Test suite for `ethereum_test` module.
 from typing import Any, Dict, List
 
 import pytest
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from ..common import (
     AccessList,
@@ -19,7 +19,17 @@ from ..common import (
 from ..common.base_types import Address, Bloom, Bytes, Hash, HeaderNonce, ZeroPaddedHexNumber
 from ..common.constants import TestAddress, TestAddress2, TestPrivateKey
 from ..common.json import to_json
-from ..common.types import Alloc, DepositRequest, Requests
+from ..common.types import (
+    Alloc,
+    CamelModel,
+    DepositRequest,
+    RejectedTransaction,
+    Requests,
+    Result,
+    TransactionLog,
+    TransactionReceipt,
+    TransitionToolOutput,
+)
 from ..exceptions import BlockException, TransactionException
 from ..spec.blockchain.types import (
     FixtureBlockBase,
@@ -29,6 +39,7 @@ from ..spec.blockchain.types import (
     FixtureTransaction,
     InvalidFixtureBlock,
 )
+from ..spec.eof.types import Fixture as EOFFixture
 from ..spec.state.types import FixtureForkPost
 from ..vm.opcode import Opcodes as Op
 
@@ -520,9 +531,9 @@ CHECKSUM_ADDRESS = "0x8a0A19589531694250d570040a0c4B74576919B8"
             Environment(),
             {
                 "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
-                "currentGasLimit": "100000000000000000",
-                "currentNumber": "1",
-                "currentTimestamp": "1000",
+                "currentGasLimit": "0x16345785d8a0000",
+                "currentNumber": "0x1",
+                "currentTimestamp": "0x3e8",
                 "blockHashes": {},
                 "ommers": [],
                 "parentUncleHash": (
@@ -553,17 +564,17 @@ CHECKSUM_ADDRESS = "0x8a0A19589531694250d570040a0c4B74576919B8"
             ),
             {
                 "currentCoinbase": "0x0000000000000000000000000000000000001234",
-                "currentGasLimit": "100000000000000000",
-                "currentNumber": "1",
-                "currentTimestamp": "1000",
-                "currentDifficulty": "5",
-                "currentRandom": "6",
-                "currentBaseFee": "7",
-                "parentDifficulty": "8",
-                "parentTimestamp": "9",
-                "parentBaseFee": "10",
-                "parentGasUsed": "11",
-                "parentGasLimit": "12",
+                "currentGasLimit": "0x16345785d8a0000",
+                "currentNumber": "0x1",
+                "currentTimestamp": "0x3e8",
+                "currentDifficulty": "0x5",
+                "currentRandom": "0x6",
+                "currentBaseFee": "0x7",
+                "parentDifficulty": "0x8",
+                "parentTimestamp": "0x9",
+                "parentBaseFee": "0xa",
+                "parentGasUsed": "0xb",
+                "parentGasLimit": "0xc",
                 "parentUncleHash": (
                     "0x000000000000000000000000000000000000000000000000000000000000000d"
                 ),
@@ -575,13 +586,13 @@ CHECKSUM_ADDRESS = "0x8a0A19589531694250d570040a0c4B74576919B8"
                         "amount": "0x2",
                     },
                 ],
-                "parentBlobGasUsed": "14",
-                "parentExcessBlobGas": "15",
-                "currentBlobGasUsed": "16",
-                "currentExcessBlobGas": "17",
+                "parentBlobGasUsed": "0xe",
+                "parentExcessBlobGas": "0xf",
+                "currentBlobGasUsed": "0x10",
+                "currentExcessBlobGas": "0x11",
                 "blockHashes": {
-                    "1": "0x0000000000000000000000000000000000000000000000000000000000000002",
-                    "3": "0x0000000000000000000000000000000000000000000000000000000000000004",
+                    "0x1": "0x0000000000000000000000000000000000000000000000000000000000000002",
+                    "0x3": "0x0000000000000000000000000000000000000000000000000000000000000004",
                 },
                 "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000004",
                 "ommers": [],
@@ -1735,3 +1746,47 @@ def test_parsing(json_str: str, type_adapter: TypeAdapter, expected: Any):
     Test that parsing the given JSON string returns the expected object.
     """
     assert type_adapter.validate_json(json_str) == expected
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param(Alloc, id="Alloc"),
+        pytest.param(Environment, id="Environment"),
+        pytest.param(RejectedTransaction, id="RejectedTransaction"),
+        pytest.param(Result, id="Result"),
+        pytest.param(TransactionLog, id="TransactionLog"),
+        pytest.param(TransitionToolOutput, id="TransitionToolOutput"),
+        pytest.param(EOFFixture, id="EOFFixture"),
+    ],
+)
+def test_json_schemas(model: BaseModel):
+    """
+    Test that the JSON schema for the given model can be generated without errors.
+    """
+    assert model.model_json_schema()
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param(Storage, id="Storage"),
+        pytest.param(Account, id="Account"),
+        pytest.param(Alloc, id="Alloc"),
+        pytest.param(Withdrawal, id="Withdrawal"),
+        pytest.param(Environment, id="Environment"),
+        pytest.param(AccessList, id="AccessList"),
+        pytest.param(Transaction, id="Transaction"),
+        pytest.param(TransactionLog, id="TransactionLog"),
+        pytest.param(TransactionReceipt, id="TransactionReceipt"),
+        pytest.param(RejectedTransaction, id="RejectedTransaction"),
+        pytest.param(Result, id="Result"),
+        pytest.param(TransitionToolOutput, id="TransitionToolOutput"),
+        pytest.param(EOFFixture, id="EOFFixture"),
+    ],
+)
+def test_json_examples(model: CamelModel):
+    """
+    Test that the JSON example for the given model can be generated without errors.
+    """
+    assert model.model_json_examples()
