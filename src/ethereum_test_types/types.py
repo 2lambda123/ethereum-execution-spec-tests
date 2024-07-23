@@ -123,6 +123,8 @@ class Alloc(BaseAlloc):
     Allocation of accounts in the state, pre and post test execution.
     """
 
+    eoa_fund_amount_default: ClassVar[int] = 10**16
+
     @dataclass(kw_only=True)
     class UnexpectedAccount(Exception):
         """
@@ -294,7 +296,7 @@ class Alloc(BaseAlloc):
         """
         raise NotImplementedError("deploy_contract is not implemented in the base class")
 
-    def fund_eoa(self, amount: NumberConvertible = 10**21, label: str | None = None) -> EOA:
+    def fund_eoa(self, amount: NumberConvertible | None = None, label: str | None = None) -> EOA:
         """
         Add a previously unused EOA to the pre-alloc with the balance specified by `amount`.
         """
