@@ -359,8 +359,11 @@ def test_macros():
 
 
 @pytest.mark.parametrize(
-    "bytecode,expected_popped_items,expected_pushed_items,"
-    "expected_max_stack_height,expected_min_stack_height",
+    (
+        "bytecode,"
+        + "expected_popped_items,expected_pushed_items,"
+        + "expected_max_stack_height,expected_min_stack_height"
+    ),
     [
         pytest.param(Op.PUSH1 + Op.POP, 0, 0, 1, 0, id="PUSH1 + POP"),
         pytest.param(Op.PUSH1 + Op.PUSH1, 0, 2, 2, 0, id="PUSH1 + PUSH1"),
@@ -382,6 +385,31 @@ def test_macros():
         pytest.param(Op.CALL(1, 2, 3, 4, 5, 6, 7), 0, 1, 7, 0, id="CALL(1, 2, 3, 4, 5, 6, 7)"),
         pytest.param(
             Op.POP(Op.CALL(1, 2, 3, 4, 5, 6, 7)), 0, 0, 7, 0, id="POP(CALL(1, 2, 3, 4, 5, 6, 7))"
+        ),
+        pytest.param(Op.ADD + Op.RETF, 2, 1, 2, 2, id="Op.ADD + Op.RETF"),
+        pytest.param(
+            (Op.ADD + Op.RETF).with_min_stack_height(2),
+            2,
+            1,
+            2,
+            2,
+            id="(Op.ADD + Op.RETF).with_min_stack_height(2)",
+        ),
+        pytest.param(
+            (Op.ADD + Op.RETF).with_min_stack_height(3),
+            2,
+            1,
+            3,
+            3,
+            id="(Op.ADD + Op.RETF).with_min_stack_height(3)",
+        ),
+        pytest.param(
+            (Op.PUSH0 + Op.POP + Op.RETF).with_min_stack_height(3),
+            0,
+            0,
+            4,
+            3,
+            id="(Op.PUSH0 + Op.POP + Op.RETF).with_min_stack_height(3)",
         ),
     ],
 )
