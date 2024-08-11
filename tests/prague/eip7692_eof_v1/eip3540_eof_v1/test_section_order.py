@@ -179,6 +179,10 @@ def test_section_order(
         skip_body_listing=calculate_skip_flag(SectionKind.DATA, CasePosition.BODY),
     )
 
+    expected_code, expected_exception = get_expected_code_exception(
+        section_kind, section_test, test_position
+    )
+
     eof_code = Container(
         sections=make_section_order(section_kind),
         auto_type_section=AutoSection.NONE,
@@ -195,14 +199,8 @@ def test_section_order(
                 )
             )
         ),
+        expected_bytecode=expected_code,
     )
-
-    expected_code, expected_exception = get_expected_code_exception(
-        section_kind, section_test, test_position
-    )
-
-    # TODO remove this after Container class implementation is reliable
-    assert bytes(eof_code).hex() == bytes.fromhex(expected_code).hex()
 
     eof_test(
         data=eof_code,
