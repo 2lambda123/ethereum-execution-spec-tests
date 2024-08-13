@@ -24,6 +24,7 @@ Test fixtures for use by clients are available for each release on the [Github r
 - 🐞 Fixed fixture index generation on EOF tests ([#728](https://github.com/ethereum/execution-spec-tests/pull/728)).
 - 🐞 Fixes consume genesis mismatch exception for hive based simulators ([#734](https://github.com/ethereum/execution-spec-tests/pull/734)).
 - ✨ Adds reproducible consume commands to hiveview ([#717](https://github.com/ethereum/execution-spec-tests/pull/717)).
+- ✨ Adds consume `--stable` flag for executing stable fixture releases ([#745](https://github.com/ethereum/execution-spec-tests/pull/745)).
 
 ### 🔧 EVM Tools
 
