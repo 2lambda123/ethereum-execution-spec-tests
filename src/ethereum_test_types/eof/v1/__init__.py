@@ -473,6 +473,27 @@ class Container(CopyValidateModel):
         kwargs.pop("kind", None)
         return cls(sections=[Section.Code(code=code, **kwargs)])
 
+    @classmethod
+    def Init(  # noqa: N802
+        cls,
+        deploy_container: "Container",
+        initcode_prefix: Bytecode = Bytecode(),
+        **kwargs,
+    ) -> "Container":
+        """
+        Creates simple init container that deploys the specified container.
+        """
+        return cls(
+            sections=[
+                Section.Code(
+                    code=initcode_prefix + Op.RETURNCONTRACT[0](0, 0),
+                ),
+                Section.Container(
+                    container=deploy_container,
+                ),
+            ],
+        )
+
     def __bytes__(self) -> bytes:
         """
         Returns the bytecode of the container.
