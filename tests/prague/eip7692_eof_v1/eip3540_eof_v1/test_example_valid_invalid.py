@@ -241,6 +241,35 @@ pytestmark = pytest.mark.valid_from(EOF_FORK_NAME)
             EOFException.UNDEFINED_INSTRUCTION,
             id="jump_jumpdest_fails",
         ),
+        pytest.param(
+            # Type section with 128 inputs
+            Container(
+                name="invalid_inputs_code_section_2",
+                sections=[
+                    Section.Code(
+                        code=Op.PUSH1(0) * 128 + Op.CALLF[1] + Op.STOP,
+                        max_stack_height=128,
+                    ),
+                    Section.Code(
+                        Op.STOP,
+                        code_inputs=128,
+                        code_outputs=0,
+                        max_stack_height=128,
+                    ),
+                ],
+            ),
+            "ef000101000802000201040001040000000080008080000080600060006000"
+            "6000600060006000600060006000600060006000600060006000600060006000"
+            "6000600060006000600060006000600060006000600060006000600060006000"
+            "6000600060006000600060006000600060006000600060006000600060006000"
+            "6000600060006000600060006000600060006000600060006000600060006000"
+            "6000600060006000600060006000600060006000600060006000600060006000"
+            "6000600060006000600060006000600060006000600060006000600060006000"
+            "6000600060006000600060006000600060006000600060006000600060006000"
+            "6000600060006000600060006000600060006000600060006000e300010000",
+            EOFException.INVALID_TYPE_SECTION_SIZE,
+            id="invalid_inputs_code_section_2",
+        ),
     ],
 )
 def test_example_valid_invalid(
