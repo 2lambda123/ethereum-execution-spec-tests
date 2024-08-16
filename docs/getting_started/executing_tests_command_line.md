@@ -120,7 +120,7 @@ usage: fill [-h] [--evm-bin EVM_BIN] [--traces] [--verify-fixtures]
             [--single-fixture-per-file] [--no-html] [--strict-alloc]
             [--ca-start CA_START] [--ca-incr CA_INCR] [--build-name BUILD_NAME]
             [--evm-dump-dir EVM_DUMP_DIR] [--forks] [--fork FORK] [--from FROM]
-            [--until UNTIL] [--test-help]
+            [--until UNTIL]
 
 options:
   -h, --help            show this help message and exit
@@ -182,10 +182,6 @@ Specify the fork range to generate fixtures for:
   --fork FORK           Only fill tests for the specified fork.
   --from FROM           Fill tests from and including the specified fork.
   --until UNTIL         Fill tests until and including the specified fork.
-
-Arguments related to running execution-spec-tests:
-  --test-help           Only show help options specific to a specific execution-
-                        spec-tests command and exit.
 
 Exit: After displaying help.
 ```
