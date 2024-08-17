@@ -464,25 +464,15 @@ class AuthorizationTupleGeneric(CamelModel, Generic[NumberBoundTypeVar]):
     Authorization tuple for transactions.
     """
 
-    chain_id: NumberBoundTypeVar = Field(1)  # type: ignore
+    chain_id: NumberBoundTypeVar = Field(0)  # type: ignore
     address: Address
-    nonce: List[NumberBoundTypeVar] = Field(default_factory=list)
+    nonce: NumberBoundTypeVar = Field(0)  # type: ignore
 
     v: NumberBoundTypeVar = Field(0)  # type: ignore
     r: NumberBoundTypeVar = Field(0)  # type: ignore
     s: NumberBoundTypeVar = Field(0)  # type: ignore
 
     magic: ClassVar[int] = 0x05
-
-    @model_validator(mode="before")
-    @classmethod
-    def convert_nonce_information(cls, data: Any) -> Any:
-        """
-        Automatically converts the nonce to a list if it is not already.
-        """
-        if "nonce" in data and not isinstance(data["nonce"], list):
-            data["nonce"] = [data["nonce"]]
-        return data
 
     def to_list(self) -> List[Any]:
         """
@@ -491,7 +481,7 @@ class AuthorizationTupleGeneric(CamelModel, Generic[NumberBoundTypeVar]):
         return [
             Uint(self.chain_id),
             self.address,
-            [Uint(n) for n in self.nonce],
+            Uint(self.nonce),
             Uint(self.v),
             Uint(self.r),
             Uint(self.s),
@@ -506,7 +496,7 @@ class AuthorizationTupleGeneric(CamelModel, Generic[NumberBoundTypeVar]):
             [
                 Uint(self.chain_id),
                 self.address,
-                [Uint(n) for n in self.nonce],
+                Uint(self.nonce),
             ]
         )
 
@@ -543,6 +533,27 @@ class AuthorizationTuple(AuthorizationTupleGeneric[HexNumber]):
         elif self.signer is not None:
             assert self.signer.key is not None, "signer must have a key"
             self.sign(self.signer.key)
+        else:
+            assert self.v is not None, "v must be set"
+            assert self.r is not None, "r must be set"
+            assert self.s is not None, "s must be set"
+
+            # Calculate the address from the signature
+            try:
+                signature_bytes = (
+                    int(self.r).to_bytes(32, byteorder="big")
+                    + int(self.s).to_bytes(32, byteorder="big")
+                    + bytes([self.v])
+                )
+                public_key = PublicKey.from_signature_and_message(
+                    signature_bytes, keccak256(self.signing_bytes), hasher=None
+                )
+                self.signer = EOA(
+                    address=Address(keccak256(public_key.format(compressed=False)[1:])[32 - 20 :])
+                )
+            except Exception:
+                # Signer remains `None` in this case
+                pass
 
     def sign(self, private_key: Hash) -> None:
         """

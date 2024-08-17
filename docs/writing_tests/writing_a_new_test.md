@@ -242,3 +242,77 @@ An intrinsically valid transaction can still revert during its execution.
 Blocks in a BlockchainTest can contain intrinsically invalid transactions but
 in this case the block is expected to be completely rejected, along with all
 transactions in it, including other valid transactions.
+
+## Parametrizing tests
+
+Tests can be parametrized by using the `@pytest.mark.parametrize` decorator.
+
+Example:
+
+```python
+import pytest
+
+@pytest.mark.parametrize(
+    "tx_value,expected_balance",
+    [
+        pytest.param(0, 0, id="zero-value"),
+        pytest.param(100, 100, id="non-zero-value"),
+    ],
+)
+def test_contract_creating_tx(
+    blockchain_test: BlockchainTestFiller, fork: Fork, tx_value: int, expected_balance: int
+):
+```
+
+This will run the test twice, once with `tx_value` set to `0` and `expected_balance`
+set to `0`, and once with `tx_value` set to `100` and `expected_balance` set to `100`.
+
+The `fork` fixture is automatically provided by the framework and contains the
+current fork under test, and does not need to be parametrized.
+
+Tests can also be automatically parametrized with appropriate fork covariant
+values using the `with_all_*` markers listed in the
+[Test Markers](./test_markers.md#fork-covariant-markers) page.
+
+### `named_parametrize` decorator
+
+This decorator can be used as a replacement to `@pytest.mark.parametrize` that
+allows to provide default values for the parameters and to specify each case
+only with the parameters that are different from the default values, and
+therefore lower the amount of redundant test cases.
+
+Example:
+
+```python
+@named_parametrize(
+    signer_type=SignerType.SINGLE_SIGNER,
+    authorization_invalidity_type=AuthorizationInvalidityType.NONE,
+    authorizations_count=1,
+    chain_id_type=ChainIDType.GENERIC,
+    authorize_to_address=AddressType.EMPTY_ACCOUNT,
+    access_list_case=AccessListType.EMPTY,
+    self_sponsored=False,
+    authority_type=AddressType.EMPTY_ACCOUNT,
+    data=b"",
+    cases=[
+        dict(authorizations_count=2, id="two_authorizations", marks=[pytest.mark.valid_from("Berlin")]),
+        ...
+    ],
+)
+def test_gas(
+    blockchain_test: BlockchainTestFiller,
+    signer_type: SignerType,
+    authorization_invalidity_type: AuthorizationInvalidityType,
+    authorizations_count: int,
+    chain_id_type: ChainIDType,
+    authorize_to_address: AddressType,
+    access_list_case: AccessListType,
+    self_sponsored: bool,
+    authority_type: AddressType,
+    data: bytes,
+):
+    ... 
+```
+
+This will run the test with the default values for all parameters except for
+`authorizations_count` which will be set to `2`.

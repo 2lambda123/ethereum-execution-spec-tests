@@ -14,7 +14,7 @@ class ReferenceSpec:
     version: str
 
 
-ref_spec_7702 = ReferenceSpec("EIPS/eip-7702.md", "7357ff1f3f176aada6d350d6e42a292a3dec27f4")
+ref_spec_7702 = ReferenceSpec("EIPS/eip-7702.md", "a6bf54ffc1506ed00f8234731684ccfe935ec9a3")
 
 
 @dataclass(frozen=True)
@@ -26,4 +26,6 @@ class Spec:
 
     SET_CODE_TX_TYPE = 0x04
     MAGIC = 0x05
-    PER_AUTH_BASE_COST = 2500
+    PER_AUTH_BASE_COST = 2_500
+    PER_EMPTY_ACCOUNT_COST = 25_000
+    DELEGATION_DESIGNATION = b"\xef\x01\x00"
