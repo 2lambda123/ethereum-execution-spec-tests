@@ -188,7 +188,7 @@ class Alloc(BaseAlloc):
         contract_address.label = label
         return contract_address
 
-    def fund_eoa(self, amount: NumberConvertible = 10**21, label: str | None = None) -> EOA:
+    def fund_eoa(self, amount: NumberConvertible | None = None, label: str | None = None) -> EOA:
         """
         Add a previously unused EOA to the pre-alloc with the balance specified by `amount`.
 
@@ -196,6 +196,8 @@ class Alloc(BaseAlloc):
         returned.
         """
         eoa = next(self._eoa_iterator)
+        if amount is None:
+            amount = self.eoa_fund_amount_default
         if Number(amount) > 0:
             super().__setitem__(
                 eoa,

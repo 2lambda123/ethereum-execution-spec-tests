@@ -5,36 +5,29 @@ Top-level pytest configuration file providing:
 and that modifies pytest hooks in order to fill test specs for all tests and
 writes the generated fixtures to file.
 """
-import configparser
-import datetime
-import os
-import tarfile
+
 import warnings
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Type
+from typing import Any, Dict, Generator, List, Optional, Type
 
 import pytest
-from filelock import FileLock
 from pytest_metadata.plugin import metadata_key  # type: ignore
 
-from cli.gen_index import generate_fixtures_index
-from ethereum_test_base_types import Alloc, ReferenceSpec
-from ethereum_test_fixtures import FixtureCollector, FixtureFormats, TestInfo
+from ethereum_test_execution import BaseExecute, ExecuteFormats
 from ethereum_test_forks import (
     Fork,
     Frontier,
     get_closest_fork_with_solc_support,
     get_forks_with_solc_support,
 )
-from ethereum_test_specs import SPEC_TYPES, BaseTest
-from ethereum_test_tools import Yul
+from ethereum_test_rpc import EthRPC
+from ethereum_test_tools import SPEC_TYPES, BaseTest, TestInfo, Transaction, Yul
 from ethereum_test_tools.code import Solc
-from ethereum_test_tools.utility.versioning import (
-    generate_github_url,
-    get_current_commit_hash_or_tag,
-)
 from evm_transition_tool import TransitionTool
 from pytest_plugins.spec_version_checker.spec_version_checker import EIPSpecTestItem
+
+from .pre_alloc import Alloc
 
 
 def default_output_directory() -> str:
@@ -42,34 +35,18 @@ def default_output_directory() -> str:
     The default directory to store the generated test fixtures. Defined as a
     function to allow for easier testing.
     """
-    return "./fixtures"
+    return "./execution_results"
 
 
-def default_html_report_file_path() -> str:
+def default_html_report_filename() -> str:
     """
-    The default file path to store the generated HTML test report. Defined as a
+    The default file to store the generated HTML test report. Defined as a
     function to allow for easier testing.
     """
-    return ".meta/report_fill.html"
+    return "report_execute.html"
 
 
-def strip_output_tarball_suffix(output: Path) -> Path:
-    """
-    Strip the '.tar.gz' suffix from the output path.
-    """
-    if str(output).endswith(".tar.gz"):
-        return output.with_suffix("").with_suffix("")
-    return output
-
-
-def is_output_stdout(output: Path) -> bool:
-    """
-    Returns True if the fixture output is configured to be stdout.
-    """
-    return strip_output_tarball_suffix(output).name == "stdout"
-
-
-def pytest_addoption(parser: pytest.Parser):
+def pytest_addoption(parser):
     """
     Adds command-line options to pytest.
     """
@@ -143,27 +120,19 @@ def pytest_addoption(parser: pytest.Parser):
         type=Path,
         default=Path(default_output_directory()),
         help=(
-            "Directory path to store the generated test fixtures. "
-            "If the specified path ends in '.tar.gz', then the specified tarball is additionally "
-            "created (the fixtures are still written to the specified path without the '.tar.gz' "
-            f"suffix). Can be deleted. Default: '{default_output_directory()}'."
+            "Directory path to write the execution result. "
+            f"Default: '{default_output_directory()}'."
         ),
     )
     test_group.addoption(
-        "--flat-output",
-        action="store_true",
-        dest="flat_output",
-        default=False,
-        help="Output each test case in the directory without the folder structure.",
-    )
-    test_group.addoption(
-        "--single-fixture-per-file",
-        action="store_true",
-        dest="single_fixture_per_file",
-        default=False,
+        "--report-filename",
+        action="store",
+        dest="report_filename",
+        type=str,
+        default=default_html_report_filename(),
         help=(
-            "Don't group fixtures in JSON files by test function; write each fixture to its own "
-            "file. This can be used to increase the granularity of --verify-fixtures."
+            "File name of the html report generated. "
+            f"Default: '{default_html_report_filename()}'."
         ),
     )
     test_group.addoption(
@@ -183,13 +152,6 @@ def pytest_addoption(parser: pytest.Parser):
         default=None,
         type=str,
         help="Specify a build name for the fixtures.ini file, e.g., 'stable'.",
-    )
-    test_group.addoption(
-        "--index",
-        action="store_true",
-        dest="generate_index",
-        default=False,
-        help="Generate an index file for all produced fixtures.",
     )
 
     debug_group = parser.getgroup("debug", "Arguments defining debug behavior")
@@ -219,10 +181,10 @@ def pytest_configure(config):
         called before the pytest-html plugin's pytest_configure to ensure that
         it uses the modified `htmlpath` option.
     """
-    for fixture_format in FixtureFormats:
+    for execute_format in ExecuteFormats:
         config.addinivalue_line(
             "markers",
-            (f"{fixture_format.name.lower()}: {fixture_format.description()}"),
+            (f"{execute_format.name.lower()}: {execute_format.description()}"),
         )
     config.addinivalue_line(
         "markers",
@@ -240,10 +202,7 @@ def pytest_configure(config):
         return
     if not config.getoption("disable_html") and config.getoption("htmlpath") is None:
         # generate an html report by default, unless explicitly disabled
-        config.option.htmlpath = (
-            strip_output_tarball_suffix(config.getoption("output"))
-            / default_html_report_file_path()
-        )
+        config.option.htmlpath = config.getoption("output") / config.getoption("report_filename")
     # Instantiate the transition tool here to check that the binary path/trace option is valid.
     # This ensures we only raise an error once, if appropriate, instead of for every test.
     t8n = TransitionTool.from_binary_path(
@@ -270,36 +229,18 @@ def pytest_configure(config):
         "t8n": t8n.version(),
         "solc": str(config.solc_version),
     }
-    args = ["fill"] + [str(arg) for arg in config.invocation_params.args]
-    for i in range(len(args)):
-        if " " in args[i]:
-            args[i] = f'"{args[i]}"'
-    command_line_args = " ".join(args)
+    command_line_args = "fill " + " ".join(config.invocation_params.args)
     config.stash[metadata_key]["Command-line args"] = f"<code>{command_line_args}</code>"
 
 
 @pytest.hookimpl(trylast=True)
-def pytest_report_header(config: pytest.Config):
+def pytest_report_header(config, start_path):
     """Add lines to pytest's console output header"""
     if config.option.collectonly:
         return
     t8n_version = config.stash[metadata_key]["Tools"]["t8n"]
     solc_version = config.stash[metadata_key]["Tools"]["solc"]
     return [(f"{t8n_version}, {solc_version}")]
-
-
-def pytest_report_teststatus(report, config: pytest.Config):
-    """
-    Disable test session progress report if we're writing the JSON fixtures to
-    stdout to be read by a consume command on stdin. I.e., don't write this
-    type of output to the console:
-
-    ```text
-    ...x...
-    ```
-    """
-    if is_output_stdout(config.getoption("output")):
-        return report.outcome, "", report.outcome.upper()
 
 
 def pytest_metadata(metadata):
@@ -313,8 +254,11 @@ def pytest_html_results_table_header(cells):
     """
     Customize the table headers of the HTML report table.
     """
-    cells.insert(3, '<th class="sortable" data-column-type="fixturePath">JSON Fixture File</th>')
-    cells.insert(4, '<th class="sortable" data-column-type="evmDumpDir">EVM Dump Dir</th>')
+    cells.insert(3, '<th class="sortable" data-column-type="sender">Sender</th>')
+    cells.insert(4, '<th class="sortable" data-column-type="fundedAccounts">Funded Accounts</th>')
+    cells.insert(
+        5, '<th class="sortable" data-column-type="fundedAccounts">Deployed Contracts</th>'
+    )
     del cells[-1]  # Remove the "Links" column
 
 
@@ -324,31 +268,18 @@ def pytest_html_results_table_row(report, cells):
     """
     if hasattr(report, "user_properties"):
         user_props = dict(report.user_properties)
-        if (
-            report.passed
-            and "fixture_path_absolute" in user_props
-            and "fixture_path_relative" in user_props
-        ):
-            fixture_path_absolute = user_props["fixture_path_absolute"]
-            fixture_path_relative = user_props["fixture_path_relative"]
-            fixture_path_link = (
-                f'<a href="{fixture_path_absolute}" target="_blank">{fixture_path_relative}</a>'
-            )
-            cells.insert(3, f"<td>{fixture_path_link}</td>")
-        elif report.failed:
-            cells.insert(3, "<td>Fixture unavailable</td>")
-        if "evm_dump_dir" in user_props:
-            if user_props["evm_dump_dir"] is None:
-                cells.insert(
-                    4, "<td>For t8n debug info use <code>--evm-dump-dir=path --traces</code></td>"
-                )
-            else:
-                evm_dump_dir = user_props.get("evm_dump_dir")
-                if evm_dump_dir == "N/A":
-                    evm_dump_entry = "N/A"
-                else:
-                    evm_dump_entry = f'<a href="{evm_dump_dir}" target="_blank">{evm_dump_dir}</a>'
-                cells.insert(4, f"<td>{evm_dump_entry}</td>")
+        if "sender_address" in user_props and user_props["sender_address"] is not None:
+            sender_address = user_props["sender_address"]
+            cells.insert(3, f"<td>{sender_address}</td>")
+        else:
+            cells.insert(3, "<td>Not available</td>")
+
+        if "funded_accounts" in user_props and user_props["funded_accounts"] is not None:
+            funded_accounts = user_props["funded_accounts"]
+            cells.insert(4, f"<td>{funded_accounts}</td>")
+        else:
+            cells.insert(4, "<td>Not available</td>")
+
     del cells[-1]  # Remove the "Links" column
 
 
@@ -364,35 +295,20 @@ def pytest_runtest_makereport(item, call):
     report = outcome.get_result()
 
     if call.when == "call":
-        if hasattr(item.config, "fixture_path_absolute") and hasattr(
-            item.config, "fixture_path_relative"
-        ):
-            report.user_properties.append(
-                ("fixture_path_absolute", item.config.fixture_path_absolute)
-            )
-            report.user_properties.append(
-                ("fixture_path_relative", item.config.fixture_path_relative)
-            )
-        if hasattr(item.config, "evm_dump_dir") and hasattr(item.config, "fixture_format"):
-            if item.config.fixture_format in [
-                "state_test",
-                "blockchain_test",
-                "blockchain_test_engine",
-            ]:
-                report.user_properties.append(("evm_dump_dir", item.config.evm_dump_dir))
-            else:
-                report.user_properties.append(("evm_dump_dir", "N/A"))  # not yet for EOF
+        for property_name in ["sender_address", "funded_accounts"]:
+            if hasattr(item.config, property_name):
+                report.user_properties.append((property_name, getattr(item.config, property_name)))
 
 
 def pytest_html_report_title(report):
     """
     Set the HTML report title (pytest-html plugin).
     """
-    report.title = "Fill Test Report"
+    report.title = "Execute Test Report"
 
 
 @pytest.fixture(autouse=True, scope="session")
-def evm_bin(request: pytest.FixtureRequest) -> Path:
+def evm_bin(request) -> Path:
     """
     Returns the configured evm tool binary path used to run t8n.
     """
@@ -400,7 +316,7 @@ def evm_bin(request: pytest.FixtureRequest) -> Path:
 
 
 @pytest.fixture(autouse=True, scope="session")
-def verify_fixtures_bin(request: pytest.FixtureRequest) -> Path | None:
+def verify_fixtures_bin(request) -> Path:
     """
     Returns the configured evm tool binary path used to run statetest or
     blocktest.
@@ -409,7 +325,7 @@ def verify_fixtures_bin(request: pytest.FixtureRequest) -> Path | None:
 
 
 @pytest.fixture(autouse=True, scope="session")
-def solc_bin(request: pytest.FixtureRequest):
+def solc_bin(request):
     """
     Returns the configured solc binary path.
     """
@@ -417,7 +333,7 @@ def solc_bin(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True, scope="session")
-def t8n(request: pytest.FixtureRequest, evm_bin: Path) -> Generator[TransitionTool, None, None]:
+def t8n(request, evm_bin: Path) -> Generator[TransitionTool, None, None]:
     """
     Returns the configured transition tool.
     """
@@ -429,49 +345,7 @@ def t8n(request: pytest.FixtureRequest, evm_bin: Path) -> Generator[TransitionTo
 
 
 @pytest.fixture(scope="session")
-def do_fixture_verification(
-    request: pytest.FixtureRequest, verify_fixtures_bin: Path | None
-) -> bool:
-    """
-    Returns True if evm statetest or evm blocktest should be ran on the
-    generated fixture JSON files.
-    """
-    do_fixture_verification = False
-    if verify_fixtures_bin:
-        do_fixture_verification = True
-    if request.config.getoption("verify_fixtures"):
-        do_fixture_verification = True
-    return do_fixture_verification
-
-
-@pytest.fixture(autouse=True, scope="session")
-def evm_fixture_verification(
-    do_fixture_verification: bool,
-    evm_bin: Path,
-    verify_fixtures_bin: Path | None,
-) -> Generator[TransitionTool | None, None, None]:
-    """
-    Returns the configured evm binary for executing statetest and blocktest
-    commands used to verify generated JSON fixtures.
-    """
-    if not do_fixture_verification:
-        yield None
-        return
-    if not verify_fixtures_bin and evm_bin:
-        verify_fixtures_bin = evm_bin
-    evm_fixture_verification = TransitionTool.from_binary_path(binary_path=verify_fixtures_bin)
-    if not evm_fixture_verification.blocktest_subcommand:
-        pytest.exit(
-            "Only geth's evm tool is supported to verify fixtures: "
-            "Either remove --verify-fixtures or set --verify-fixtures-bin to a Geth evm binary.",
-            returncode=pytest.ExitCode.USAGE_ERROR,
-        )
-    yield evm_fixture_verification
-    evm_fixture_verification.shutdown()
-
-
-@pytest.fixture(scope="session")
-def base_dump_dir(request: pytest.FixtureRequest) -> Path | None:
+def base_dump_dir(request) -> Optional[Path]:
     """
     The base directory to dump the evm debug output.
     """
@@ -481,109 +355,10 @@ def base_dump_dir(request: pytest.FixtureRequest) -> Path | None:
     return None
 
 
-@pytest.fixture(scope="session")
-def is_output_tarball(request: pytest.FixtureRequest) -> bool:
-    """
-    Returns True if the output directory is a tarball.
-    """
-    output: Path = request.config.getoption("output")
-    if output.suffix == ".gz" and output.with_suffix("").suffix == ".tar":
-        return True
-    return False
-
-
-@pytest.fixture(scope="session")
-def output_dir(request: pytest.FixtureRequest, is_output_tarball: bool) -> Path:
-    """
-    Returns the directory to store the generated test fixtures.
-    """
-    output = request.config.getoption("output")
-    if is_output_tarball:
-        return strip_output_tarball_suffix(output)
-    return output
-
-
-@pytest.fixture(scope="session")
-def output_metadata_dir(output_dir: Path) -> Path:
-    """
-    Returns the metadata directory to store fixture meta files.
-    """
-    return output_dir / ".meta"
-
-
-@pytest.fixture(scope="session", autouse=True)
-def create_properties_file(
-    request: pytest.FixtureRequest, output_dir: Path, output_metadata_dir: Path
-) -> None:
-    """
-    Creates an ini file with fixture build properties in the fixture output
-    directory.
-    """
-    if is_output_stdout(request.config.getoption("output")):
-        return
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
-    if not output_metadata_dir.exists():
-        output_metadata_dir.mkdir(parents=True)
-
-    fixture_properties = {
-        "timestamp": datetime.datetime.now().isoformat(),
-    }
-    if build_name := request.config.getoption("build_name"):
-        fixture_properties["build"] = build_name
-    if github_ref := os.getenv("GITHUB_REF"):
-        fixture_properties["ref"] = github_ref
-    if github_sha := os.getenv("GITHUB_SHA"):
-        fixture_properties["commit"] = github_sha
-    command_line_args = request.config.stash[metadata_key]["Command-line args"]
-    command_line_args = command_line_args.replace("<code>", "").replace("</code>", "")
-    fixture_properties["command_line_args"] = command_line_args
-
-    config = configparser.ConfigParser()
-    config["fixtures"] = fixture_properties
-    environment_properties = {}
-    for key, val in request.config.stash[metadata_key].items():
-        if key.lower() == "command-line args":
-            continue
-        if key.lower() in ["ci", "python", "platform"]:
-            environment_properties[key] = val
-        elif isinstance(val, dict):
-            config[key.lower()] = val
-        else:
-            warnings.warn(f"Fixtures ini file: Skipping metadata key {key} with value {val}.")
-    config["environment"] = environment_properties
-
-    ini_filename = output_metadata_dir / "fixtures.ini"
-    with open(ini_filename, "w") as f:
-        f.write("; This file describes fixture build properties\n\n")
-        config.write(f)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def create_tarball(
-    request: pytest.FixtureRequest, output_dir: Path, is_output_tarball: bool
-) -> Generator[None, None, None]:
-    """
-    Create a tarball of json files the output directory if the configured
-    output ends with '.tar.gz'.
-
-    Only include .json and .ini files in the archive.
-    """
-    yield
-    if is_output_tarball:
-        source_dir = output_dir
-        tarball_filename = request.config.getoption("output")
-        with tarfile.open(tarball_filename, "w:gz") as tar:
-            for file in source_dir.rglob("*"):
-                if file.suffix in {".json", ".ini"}:
-                    arcname = Path("fixtures") / file.relative_to(source_dir)
-                    tar.add(file, arcname=arcname)
-
-
 @pytest.fixture(scope="function")
 def dump_dir_parameter_level(
-    request: pytest.FixtureRequest, base_dump_dir: Path | None, filler_path: Path
-) -> Path | None:
+    request, base_dump_dir: Optional[Path], filler_path: Path
+) -> Optional[Path]:
     """
     The directory to dump evm transition tool debug output on a test parameter
     level.
@@ -604,83 +379,37 @@ def dump_dir_parameter_level(
     return evm_dump_dir
 
 
-def get_fixture_collection_scope(fixture_name, config):
+@dataclass(kw_only=True)
+class Collector:
     """
-    Return the appropriate scope to write fixture JSON files.
+    A class that collects transactions and post-allocations for every test case.
+    """
 
-    See: https://docs.pytest.org/en/stable/how-to/fixtures.html#dynamic-scope
-    """
-    if is_output_stdout(config.getoption("output")):
-        return "session"
-    if config.getoption("single_fixture_per_file"):
-        return "function"
-    return "module"
+    eth_rpc: EthRPC
+    collected_tests: Dict[str, BaseExecute] = field(default_factory=dict)
+
+    def collect(self, test_name: str, execute_format: BaseExecute):
+        """
+        Collects the transactions and post-allocations for the test case.
+        """
+        self.collected_tests[test_name] = execute_format
 
 
 @pytest.fixture(scope="session")
-def generate_index(request) -> bool:  # noqa: D103
-    return request.config.option.generate_index
-
-
-@pytest.fixture(scope=get_fixture_collection_scope)
-def fixture_collector(
-    request: pytest.FixtureRequest,
-    do_fixture_verification: bool,
-    evm_fixture_verification: TransitionTool,
-    filler_path: Path,
-    base_dump_dir: Path | None,
-    output_dir: Path,
-    session_temp_folder: Path | None,
-    generate_index: bool,
-) -> Generator[FixtureCollector, None, None]:
+def collector(
+    request,
+    eth_rpc: EthRPC,
+) -> Generator[Collector, None, None]:
     """
     Returns the configured fixture collector instance used for all tests
     in one test module.
     """
-    if session_temp_folder is not None:
-        fixture_collector_count_file_name = "fixture_collector_count"
-        fixture_collector_count_file = session_temp_folder / fixture_collector_count_file_name
-        fixture_collector_count_file_lock = (
-            session_temp_folder / f"{fixture_collector_count_file_name}.lock"
-        )
-        with FileLock(fixture_collector_count_file_lock):
-            if fixture_collector_count_file.exists():
-                with open(fixture_collector_count_file, "r") as f:
-                    fixture_collector_count = int(f.read())
-            else:
-                fixture_collector_count = 0
-            fixture_collector_count += 1
-            with open(fixture_collector_count_file, "w") as f:
-                f.write(str(fixture_collector_count))
-
-    fixture_collector = FixtureCollector(
-        output_dir=output_dir,
-        flat_output=request.config.getoption("flat_output"),
-        single_fixture_per_file=request.config.getoption("single_fixture_per_file"),
-        filler_path=filler_path,
-        base_dump_dir=base_dump_dir,
-    )
-    yield fixture_collector
-    fixture_collector.dump_fixtures()
-    if do_fixture_verification:
-        fixture_collector.verify_fixture_files(evm_fixture_verification)
-
-    fixture_collector_count = 0
-    if session_temp_folder is not None:
-        with FileLock(fixture_collector_count_file_lock):
-            with open(fixture_collector_count_file, "r") as f:
-                fixture_collector_count = int(f.read())
-            fixture_collector_count -= 1
-            with open(fixture_collector_count_file, "w") as f:
-                f.write(str(fixture_collector_count))
-    if generate_index and fixture_collector_count == 0:
-        generate_fixtures_index(
-            output_dir, quiet_mode=True, force_flag=False, disable_infer_format=False
-        )
+    collector = Collector(eth_rpc=eth_rpc)
+    yield collector
 
 
 @pytest.fixture(autouse=True, scope="session")
-def filler_path(request: pytest.FixtureRequest) -> Path:
+def filler_path(request) -> Path:
     """
     Returns the directory containing the tests to execute.
     """
@@ -743,34 +472,20 @@ def yul(fork: Fork, request):
 SPEC_TYPES_PARAMETERS: List[str] = [s.pytest_parameter_name() for s in SPEC_TYPES]
 
 
-def node_to_test_info(node: pytest.Item) -> TestInfo:
+def node_to_test_info(node) -> TestInfo:
     """
     Returns the test info of the current node item.
     """
     return TestInfo(
         name=node.name,
         id=node.nodeid,
-        original_name=node.originalname,  # type: ignore
+        original_name=node.originalname,
         path=Path(node.path),
     )
 
 
 @pytest.fixture(scope="function")
-def fixture_source_url(request: pytest.FixtureRequest) -> str:
-    """
-    Returns the URL to the fixture source.
-    """
-    function_line_number = request.function.__code__.co_firstlineno
-    module_relative_path = os.path.relpath(request.module.__file__)
-    hash_or_tag = get_current_commit_hash_or_tag()
-    github_url = generate_github_url(
-        module_relative_path, branch_or_commit_or_tag=hash_or_tag, line_number=function_line_number
-    )
-    return github_url
-
-
-@pytest.fixture(scope="function")
-def fixture_description(request: pytest.FixtureRequest) -> str:
+def fixture_description(request):
     """Fixture to extract and combine docstrings from the test class and the test function."""
     description_unavailable = (
         "No description available - add a docstring to the python test class or function."
@@ -800,17 +515,13 @@ def base_test_parametrizer(cls: Type[BaseTest]):
         name=cls.pytest_parameter_name(),
     )
     def base_test_parametrizer_func(
-        request: pytest.FixtureRequest,
-        t8n: TransitionTool,
+        request: Any,
         fork: Fork,
-        reference_spec: ReferenceSpec,
-        eips: List[int],
         pre: Alloc,
-        output_dir: Path,
-        dump_dir_parameter_level: Path | None,
-        fixture_collector: FixtureCollector,
-        fixture_description: str,
-        fixture_source_url: str,
+        eips: List[int],
+        eth_rpc: EthRPC,
+        dump_dir_parameter_level,
+        collector: Collector,
     ):
         """
         Fixture used to instantiate an auto-fillable BaseTest object from within
@@ -822,39 +533,60 @@ def base_test_parametrizer(cls: Type[BaseTest]):
 
         When parametrize, indirect must be used along with the fixture format as value.
         """
-        fixture_format = request.param
-        assert isinstance(fixture_format, FixtureFormats)
+        execute_format = request.param
+        assert isinstance(execute_format, ExecuteFormats)
 
         class BaseTestWrapper(cls):  # type: ignore
             def __init__(self, *args, **kwargs):
                 kwargs["t8n_dump_dir"] = dump_dir_parameter_level
                 if "pre" not in kwargs:
                     kwargs["pre"] = pre
+                elif kwargs["pre"] != pre:
+                    raise ValueError("The pre-alloc object was modified by the test.")
+
+                request.node.config.sender_address = str(pre._sender)
+
                 super(BaseTestWrapper, self).__init__(*args, **kwargs)
-                fixture = self.generate(
-                    t8n=t8n,
-                    fork=fork,
-                    fixture_format=fixture_format,
-                    eips=eips,
-                )
-                fixture.fill_info(
-                    t8n.version(),
-                    fixture_description,
-                    fixture_source_url=fixture_source_url,
-                    ref_spec=reference_spec,
-                )
 
-                fixture_path = fixture_collector.add_fixture(
-                    node_to_test_info(request.node),
-                    fixture,
-                )
+                # wait for pre-requisite transactions to be included in blocks
+                pre.wait_for_transactions()
+                for deployed_contract, deployed_code in pre._deployed_contracts:
 
-                # NOTE: Use str for compatibility with pytest-dist
-                request.node.config.fixture_path_absolute = str(fixture_path.absolute())
-                request.node.config.fixture_path_relative = str(
-                    fixture_path.relative_to(output_dir)
+                    if eth_rpc.get_code(deployed_contract) == deployed_code:
+                        pass
+                    else:
+                        raise Exception(
+                            f"Deployed test contract didn't match expected code at address "
+                            f"{deployed_contract} (not enough gas_limit?)."
+                        )
+
+                execute = self.execute(fork=fork, execute_format=execute_format, eips=eips)
+                execute.execute(eth_rpc)
+                collector.collect(request.node.nodeid, execute)
+
+                # Refund all EOAs
+                refund_txs = []
+                request.node.config.funded_accounts = ", ".join(
+                    [str(eoa) for eoa in pre._funded_eoa]
                 )
-                request.node.config.fixture_format = fixture_format.value
+                for eoa in pre._funded_eoa:
+                    remaining_balance = eth_rpc.get_balance(eoa)
+                    eoa.nonce = eth_rpc.get_transaction_count(eoa)
+                    refund_gas_limit = 21_000
+                    refund_gas_price = 10**9
+                    tx_cost = refund_gas_limit * refund_gas_price
+                    if remaining_balance < tx_cost:
+                        continue
+                    refund_txs.append(
+                        Transaction(
+                            sender=eoa,
+                            to=pre._sender,
+                            gas_limit=21_000,
+                            gas_price=10**9,
+                            value=remaining_balance - tx_cost,
+                        ).with_signature_and_sender()
+                    )
+                eth_rpc.send_wait_transactions(refund_txs)
 
         return BaseTestWrapper
 
@@ -878,11 +610,11 @@ def pytest_generate_tests(metafunc: pytest.Metafunc):
                 [test_type.pytest_parameter_name()],
                 [
                     pytest.param(
-                        fixture_format,
-                        id=fixture_format.name.lower(),
-                        marks=[getattr(pytest.mark, fixture_format.name.lower())],
+                        execute_format,
+                        id=execute_format.name.lower(),
+                        marks=[getattr(pytest.mark, execute_format.name.lower())],
                     )
-                    for fixture_format in test_type.supported_fixture_formats
+                    for execute_format in test_type.supported_execute_formats
                 ],
                 scope="function",
                 indirect=True,
@@ -900,16 +632,12 @@ def pytest_collection_modifyitems(config: pytest.Config, items: List[pytest.Item
     for item in items[:]:  # use a copy of the list, as we'll be modifying it
         if isinstance(item, EIPSpecTestItem):
             continue
-        params: Dict[str, Any] = item.callspec.params  # type: ignore
-        if "fork" not in params or params["fork"] is None:
-            items.remove(item)
-            continue
-        fork: Fork = params["fork"]
-        if fork.engine_new_payload_version(0, 0) is None:
-            for spec_name in [spec_type.pytest_parameter_name() for spec_type in SPEC_TYPES]:
-                if spec_name in params and params[spec_name].is_hive_format():
-                    items.remove(item)
-                    break
+        for marker in item.iter_markers():
+            if marker.name == "skip_execute":
+                item.add_marker(
+                    pytest.mark.skip(reason="execute mode not supported for this test.")
+                )
+                break
         if "yul" in item.fixturenames:  # type: ignore
             item.add_marker(pytest.mark.yul_test)
 
